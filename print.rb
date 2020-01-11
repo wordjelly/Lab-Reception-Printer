@@ -70,10 +70,12 @@ class Print
 	attr_accessor :printers
 	attr_accessor :printer
 	attr_accessor :job
+	attr_accessor :printing_on
 
 	def initialize(args={})
 		self.printers = CupsPrinter.get_all_printer_names
 		self.printer = CupsPrinter.new(self.printers.first)
+		self.printing_on = args[:printing_on] || false
 		raise "Please provide a firebase private key hash " if args[:private_key_hash].nil?
 		raise "Please provide an organization id " if args[:organization_id].nil?
 		self.private_key_hash = args[:private_key_hash]
@@ -106,22 +108,28 @@ class Print
 =end
 
 	def on_print_notification(data)
+		puts "incoming data:#{data}"
 		unless data.blank?
-			data = data["data"].blank? ? data : data["data"]
+			path_key = nil
+			unless data["path"] == "/"
+				path_key = data["path"].gsub(/\//,'')
+			end
+			puts "path key becomes: #{path_key}"
+			data = data["data"]
+
 			unless data.blank?
 				if data.is_a? Hash
-					data.keys.each do |fn_hash|
-						file_url = data[fn_hash]["pdf_url"]
-						#file_url = "https://res.cloudinary.com/doohavoda/image/upload/s--674RJ6NO--/v1577767704/1577767700_5e0a1ac5acbcd61875f90f7d-Pathofast-5e0ad0b1acbcd624dff3f151_Adityaplus Raut.pdf"				
-						if tempfile = download_file(file_url)
-							puts "file download success"
-							unless print_file(tempfile.path).blank?
-								clear_remote_file(fn_hash)
-							else
-								puts "printing deferred as previous job is incomplete"
-							end
+					puts "data is:#{data}"
+					if data["pdf_url"]
+						file_url = data["pdf_url"]
+						process_url(file_url,path_key)
+					else
+						data.keys.each do |fn_hash|
+							file_url = data[fn_hash]["pdf_url"]
+							process_url(file_url,fn_hash)
 						end
 					end
+
 				end
 			end
 		end
@@ -132,6 +140,28 @@ class Print
 		puts self.connection.delete(self.event_source + "/#{hashkey}")
 	end	
 
+	def process_url(file_url,fn_hash)
+		if file_url =~ /^http/
+		    # Correct URL
+			if tempfile = download_file(file_url)
+				puts "file download success"
+				unless self.printing_on.blank?
+					unless print_file(tempfile.path).blank?
+						clear_remote_file(fn_hash)
+					else
+						puts "printing deferred as previous job is incomplete"
+					end
+				else
+					puts "PRINTING IS OFF, so not printing."
+					clear_remote_file(fn_hash)
+				end
+			end
+		else
+			puts "url is not valid, will be cleared from remote.: #{file_url}"
+			#clear_remote_file(fn_hash)
+		end
+	end
+
 	def download_file(url)
 		tempfile = Down.download(url)
 	end
@@ -141,9 +171,11 @@ end
 
 private_key_hash = JSON.parse(IO.read(ENV["FIREBASE_PRIVATE_KEY_PATH"]))
 puts private_key_hash
+
 pr = Print.new({
 	:private_key_hash => private_key_hash,
-	:organization_id => "Pathofast"
+	:organization_id => "5e196674acbcd63d3d43b238-Pathofast",
+	:printing_on => true
 })
 
 pr.watch
