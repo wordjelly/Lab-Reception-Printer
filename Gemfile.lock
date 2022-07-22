@@ -37,7 +37,7 @@ GEM
       rest-core (>= 4.0.0)
     thread_safe (0.3.6)
     timers (4.3.0)
-    tzinfo (1.2.6)
+    tzinfo (1.2.10)
       thread_safe (~> 0.1)
     zeitwerk (2.2.2)
 
